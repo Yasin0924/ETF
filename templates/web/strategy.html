@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略参数 - ETF 组合分析系统</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <style>
+        .strategy-params-card {
+            min-height: 70vh;
+        }
+
+        .strategy-params-card #current-params {
+            max-height: calc(70vh - 120px);
+            overflow: auto;
+        }
+
+        .strategy-signal-card {
+            min-height: 140px;
+        }
+
+        @media (max-width: 960px) {
+            .strategy-params-card {
+                min-height: 56vh;
+            }
+
+            .strategy-params-card #current-params {
+                max-height: calc(56vh - 110px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="sidebar">
+        <a href="/" class="logo" style="display:block;text-decoration:none;color:inherit;">ETF 智能投研系统</a>
+        <a href="/" class="nav-item">组合总览</a>
+        <a href="/backtest" class="nav-item">策略回测</a>
+        <a href="/screening" class="nav-item">基金筛选</a>
+        <a href="/strategy" class="nav-item active">策略参数</a>
+        <a href="/dca" class="nav-item">定投模拟</a>
+        <a href="/data" class="nav-item">数据查询</a>
+    </nav>
+
+    <main class="content">
+        <header class="topbar">
+            <h1>策略参数管理</h1>
+        </header>
+        <div id="op-status" class="op-status" role="status" aria-live="polite"></div>
+
+        <section class="card strategy-params-card">
+            <h3>当前参数（可直接修改）</h3>
+            <p class="empty-tip" style="padding:0 0 12px 0;text-align:left;">支持在每一行直接编辑参数值并点击“更新”。数字/布尔值可直接输入，数组或对象请使用对象/数组文本格式。</p>
+            <p class="empty-tip" id="validation-hint" style="padding:0 0 12px 0;text-align:left;">参数校验提示：比例类参数建议在 0~1 之间，回撤阈值建议为负值（如 -0.10）。</p>
+            <div id="current-params" class="params-list"></div>
+        </section>
+
+        <section class="card strategy-signal-card">
+            <h3>策略信号预览</h3>
+            <form id="signal-form" class="form-grid">
+                <div class="form-group">
+                    <label>基金代码</label>
+                    <input id="signal-code" value="510300">
+                </div>
+                <div class="form-group form-action">
+                    <button class="btn-secondary" type="submit">生成信号</button>
+                </div>
+            </form>
+            <div id="signal-result" style="margin-top:12px;"></div>
+        </section>
+
+        <section class="card strategy-signal-card">
+            <h3>候选基金池</h3>
+            <p class="empty-tip" style="padding:0 0 12px 0;text-align:left;">可在“基金筛选”页点击“加入策略池”，并在此一键应用为目标权重。</p>
+            <div id="candidate-pool" style="margin-top:8px;"></div>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="apply-pool" class="btn-secondary" type="button">一键应用为目标权重</button>
+                <button id="clear-pool" class="btn-secondary" type="button">清空候选池</button>
+            </div>
+            <div id="pool-msg" class="empty-tip" style="padding-top:12px;text-align:left;"></div>
+        </section>
+    </main>
+
+    <script>
+    (function () {
+        var opStatus = document.getElementById('op-status');
+
+        function requestJson(url, options) {
+            return fetch(url, options).then(function (r) { return r.json(); });
+        }
+
+        function setStatus(type, msg) {
+            opStatus.className = 'op-status show ' + type;
+            opStatus.textContent = msg;
+        }
+
+        var tradeTypeMap = {
+            'buy': '买入',
+            'sell': '卖出',
+            'add': '加仓',
+            'take_profit': '止盈',
+            'stop_loss': '止损',
+            'rebalance': '调仓'
+        };
+        function cnType(t) { return tradeTypeMap[t] || t; }
+        function cnReason(r) {
+            var s = String(r || '');
+            if (!s) return '-';
+            if (s.indexOf('portfolio drawdown') >= 0) return '组合回撤触发风控减仓';
+            if (s.indexOf('value/drop trigger hit') >= 0) return '估值/跌幅触发买入或加仓';
+            if (s.indexOf('daily drop trigger hit') >= 0) return '单日下跌触发买入或加仓';
+            if (s.indexOf('Weight deviation') >= 0) return '仓位偏离触发调仓';
+            if (s.indexOf('Return ') >= 0) return '收益率触发止盈';
+            if (s.indexOf('Loss ') >= 0) return '亏损触发止损';
+            return s;
+        }
+
+        function cnMessage(msg) {
+            var m = String(msg || '');
+            if (m === 'Empty request body') return '请求体为空';
+            return m || '未知错误';
+        }
+
+        var paramsCache = {};
+        var keyMap = {
+            semi_monthly_rebalance: '半月再平衡',
+            buy_signal: '买入信号',
+            broad_market: '宽基指数',
+            gold: '黄金指数',
+            sector: '行业成长',
+            daily_drop_trigger: '单日跌幅阈值',
+            pe_percentile_threshold: 'PE分位阈值',
+            deviation_portfolio: '组合偏离阈值',
+            deviation_single: '单标偏离阈值',
+            rebalance_day: '再平衡日期',
+            stop_loss: '止损策略',
+            take_profit: '止盈策略',
+            pause_add_threshold: '暂停加仓阈值',
+            single_max_drawdown: '单标最大回撤',
+            portfolio_drawdown: '组合回撤控制',
+            tier1: '一档风控',
+            tier2: '二档风控',
+            valuation_exit: '估值退出',
+            reduce_ratio: '减仓比例',
+            return_threshold: '收益阈值',
+            force_reduce: '强制降仓',
+            force_reduce_ratio: '强制降仓比例',
+            force_reduce_threshold: '强制触发阈值',
+            ma_period: '均线周期',
+            confirm_days: '确认天数',
+            ma_break: '跌破均线',
+            daily_drop: '单日跌幅',
+            return_exit: '收益退出'
+        };
+
+        function cnKey(k) {
+            return keyMap[k] || k;
+        }
+
+        function deepClone(obj) {
+            return JSON.parse(JSON.stringify(obj));
+        }
+
+        function getByPath(obj, path) {
+            var cur = obj;
+            for (var i = 0; i < path.length; i++) {
+                cur = cur[path[i]];
+            }
+            return cur;
+        }
+
+        function parseInput(raw) {
+            var txt = raw.trim();
+            if (txt === '') {
+                return '';
+            }
+            if (txt === 'true') {
+                return true;
+            }
+            if (txt === 'false') {
+                return false;
+            }
+            if (txt === 'null') {
+                return null;
+            }
+            if (!isNaN(Number(txt)) && txt !== '') {
+                return Number(txt);
+            }
+            if ((txt[0] === '{' && txt[txt.length - 1] === '}') || (txt[0] === '[' && txt[txt.length - 1] === ']')) {
+                return JSON.parse(txt);
+            }
+            return txt;
+        }
+
+        function validateParam(path, value) {
+            var key = path[path.length - 1];
+            if (key.indexOf('ratio') >= 0 || key.indexOf('threshold') >= 0 || key.indexOf('percentile') >= 0) {
+                if (typeof value === 'number') {
+                    if (key.indexOf('drawdown') >= 0 || key.indexOf('drop') >= 0) {
+                        if (value > 0) return '回撤/跌幅阈值建议为负值';
+                    } else if (value < 0 || value > 1) {
+                        return '比例类参数建议在 0~1 之间';
+                    }
+                }
+            }
+            return '';
+        }
+
+        function renderEditorRows(obj, path, topKey) {
+            var html = '';
+            if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+                Object.keys(obj).forEach(function (k) {
+                    var nextPath = path.concat([k]);
+                    var value = obj[k];
+                    if (value && typeof value === 'object') {
+                        html += '<div class="param-group">' + cnKey(k) + '</div>';
+                        html += '<div class="param-node">' + renderEditorRows(value, nextPath, topKey) + '</div>';
+                    } else {
+                        var inputId = 'param_' + topKey + '_' + nextPath.join('_').replace(/[^a-zA-Z0-9_]/g, '_');
+                        var valueText = value === null ? 'null' : String(value);
+                        html += '<div class="param-line">';
+                        html += '<span class="param-key">' + cnKey(k) + '</span>';
+                        html += '<input class="param-inline-input" id="' + inputId + '" data-top="' + topKey + '" data-path="' + nextPath.join('.') + '" value="' + valueText.replace(/"/g, '&quot;') + '">';
+                        html += '<button class="btn-secondary param-update-btn" data-input="' + inputId + '">更新</button>';
+                        html += '</div>';
+                    }
+                });
+            } else if (Array.isArray(obj)) {
+                obj.forEach(function (item, index) {
+                    var nextPath = path.concat([String(index)]);
+                    if (item && typeof item === 'object') {
+                        html += '<div class="param-group">[' + index + ']</div>';
+                        html += '<div class="param-node">' + renderEditorRows(item, nextPath, topKey) + '</div>';
+                    } else {
+                        var inputId = 'param_' + topKey + '_' + nextPath.join('_').replace(/[^a-zA-Z0-9_]/g, '_');
+                        var valueText = item === null ? 'null' : String(item);
+                        html += '<div class="param-line">';
+                        html += '<span class="param-key">[' + index + ']</span>';
+                        html += '<input class="param-inline-input" id="' + inputId + '" data-top="' + topKey + '" data-path="' + nextPath.join('.') + '" value="' + valueText.replace(/"/g, '&quot;') + '">';
+                        html += '<button class="btn-secondary param-update-btn" data-input="' + inputId + '">更新</button>';
+                        html += '</div>';
+                    }
+                });
+            }
+            return html;
+        }
+
+        function renderParams(params) {
+            var html = '<div class="param-tree">';
+            if (!params || Object.keys(params).length === 0) {
+                html += '<div class="empty-tip">暂无参数数据</div>';
+            } else {
+                Object.keys(params).forEach(function (topKey) {
+                    html += '<div class="param-group">' + cnKey(topKey) + '</div>';
+                    html += '<div class="param-node">' + renderEditorRows(params[topKey], [topKey], topKey) + '</div>';
+                });
+            }
+            html += '</div>';
+            document.getElementById('current-params').innerHTML = html;
+
+            document.querySelectorAll('.param-update-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var input = document.getElementById(btn.getAttribute('data-input'));
+                    if (!input) {
+                        return;
+                    }
+                    var topKey = input.getAttribute('data-top');
+                    var path = input.getAttribute('data-path').split('.');
+                    var next = deepClone(paramsCache[topKey]);
+                    var target = next;
+                    for (var i = 1; i < path.length - 1; i++) {
+                        target = target[path[i]];
+                    }
+                    var leafKey = path[path.length - 1];
+                    try {
+                        target[leafKey] = parseInput(input.value);
+                    } catch (e) {
+                        setStatus('error', '参数值格式错误，请检查对象/数组文本格式。');
+                        return;
+                    }
+                    var hint = validateParam(path, target[leafKey]);
+                    if (hint) {
+                        document.getElementById('validation-hint').textContent = '参数校验提示：' + hint;
+                    } else {
+                        document.getElementById('validation-hint').textContent = '参数校验提示：格式与范围检查通过。';
+                    }
+
+                    var payload = {};
+                    payload[topKey] = next;
+                    requestJson('/api/strategy/params', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    }).then(function (resp) {
+                        if (resp.status_code !== 0) {
+                            setStatus('error', '更新失败：' + cnMessage(resp.message));
+                            return;
+                        }
+                        loadParams();
+                        setStatus('success', '参数更新成功。');
+                    });
+                });
+            });
+        }
+
+        function loadParams() {
+            requestJson('/api/strategy/params').then(function (resp) {
+                if (resp.status_code === 0) {
+                    paramsCache = resp.data || {};
+                    renderParams(paramsCache);
+                }
+            });
+        }
+
+        function loadCandidatePool() {
+            var key = 'etf_candidate_pool';
+            var pool = [];
+            try {
+                pool = JSON.parse(localStorage.getItem(key) || '[]');
+            } catch (e) {
+                pool = [];
+            }
+            if (!pool.length) {
+                document.getElementById('candidate-pool').innerHTML = '<p class="empty-tip">候选池为空，请先到基金筛选页添加。</p>';
+                return pool;
+            }
+            var html = '<table class="data-table"><thead><tr><th>代码</th><th>名称</th><th>类型</th><th>操作</th></tr></thead><tbody>';
+            pool.forEach(function (x, idx) {
+                html += '<tr><td>'+x.code+'</td><td>'+x.name+'</td><td>'+x.category+'</td><td><button class="btn-secondary remove-pool" data-idx="'+idx+'">移除</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('candidate-pool').innerHTML = html;
+            document.querySelectorAll('.remove-pool').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var i = Number(btn.getAttribute('data-idx'));
+                    pool.splice(i, 1);
+                    localStorage.setItem(key, JSON.stringify(pool));
+                    loadCandidatePool();
+                });
+            });
+            return pool;
+        }
+
+        document.getElementById('signal-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            var code = document.getElementById('signal-code').value.trim() || '510300';
+            requestJson('/api/strategy/signals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            }).then(function (resp) {
+                if (resp.status_code !== 0) {
+                    setStatus('error', '获取失败：' + cnMessage(resp.message));
+                    return;
+                }
+                var html = '<table class="data-table"><thead><tr><th>日期</th><th>信号</th><th>原因</th></tr></thead><tbody>';
+                (resp.data.signals || []).forEach(function (s) {
+                    html += '<tr><td>' + s.date + '</td><td>' + cnType(s.signal) + '</td><td>' + cnReason(s.reason) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('signal-result').innerHTML = html;
+                setStatus('success', '信号预览已更新。');
+            });
+
+        });
+
+        document.getElementById('apply-pool').addEventListener('click', function(){
+            var pool = loadCandidatePool();
+            if (!pool.length) {
+                document.getElementById('pool-msg').textContent = '候选池为空，无法应用。';
+                setStatus('error', '候选池为空，无法应用目标权重。');
+                return;
+            }
+            var weight = Number((1 / pool.length).toFixed(4));
+            var targetWeights = {};
+            pool.forEach(function(x){ targetWeights[x.code] = weight; });
+
+            var base = paramsCache.semi_monthly_rebalance || {};
+            var next = deepClone(base);
+            next.target_weights = targetWeights;
+            requestJson('/api/strategy/params', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ semi_monthly_rebalance: next })
+            }).then(function(resp){
+                if (resp.status_code !== 0) {
+                    document.getElementById('pool-msg').textContent = '应用失败：' + cnMessage(resp.message);
+                    setStatus('error', '候选池应用失败：' + cnMessage(resp.message));
+                    return;
+                }
+                document.getElementById('pool-msg').textContent = '已将候选池应用为目标权重。';
+                document.getElementById('validation-hint').textContent = '参数校验提示：已自动按等权重分配目标仓位。';
+                loadParams();
+                setStatus('success', '候选池已应用为目标权重。');
+            });
+        });
+
+        document.getElementById('clear-pool').addEventListener('click', function(){
+            localStorage.setItem('etf_candidate_pool', JSON.stringify([]));
+            loadCandidatePool();
+            document.getElementById('pool-msg').textContent = '候选池已清空。';
+            setStatus('success', '候选池已清空。');
+        });
+
+        loadParams();
+        loadCandidatePool();
+    })();
+    </script>
+</body>
+</html>

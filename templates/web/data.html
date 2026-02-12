@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据查询 - ETF 组合分析系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <a href="/" class="logo" style="display:block;text-decoration:none;color:inherit;">ETF 智能投研系统</a>
+        <a href="/" class="nav-item">组合总览</a>
+        <a href="/backtest" class="nav-item">策略回测</a>
+        <a href="/screening" class="nav-item">基金筛选</a>
+        <a href="/strategy" class="nav-item">策略参数</a>
+        <a href="/dca" class="nav-item">定投模拟</a>
+        <a href="/data" class="nav-item active">数据查询</a>
+    </nav>
+
+    <main class="content">
+        <header class="topbar"><h1>ETF 数据查询</h1></header>
+        <div id="op-status" class="op-status" role="status" aria-live="polite"></div>
+
+        <section class="card">
+            <h3>查询条件</h3>
+            <form id="data-form" class="form-grid">
+                <div class="form-group"><label>基金代码</label><input id="code" value="510300"></div>
+                <div class="form-group"><label>开始日期</label><input id="start" type="date" value="2024-01-01"></div>
+                <div class="form-group"><label>结束日期</label><input id="end" type="date" value="2024-12-31"></div>
+                <div class="form-group form-action"><button class="btn-primary" type="submit">查询</button></div>
+            </form>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+                <button id="refresh-data" type="button" class="btn-secondary">刷新数据</button>
+                <span id="data-status" class="empty-tip" style="padding:0;text-align:left;">缓存状态：未知</span>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>净值曲线</h3>
+            <div id="nav-chart" style="height:320px;"></div>
+        </section>
+
+        <section class="card">
+            <h3>明细数据</h3>
+            <div id="data-table" style="max-height:320px;overflow-y:auto;"></div>
+        </section>
+    </main>
+
+    <script>
+    (function () {
+        var opStatus = document.getElementById('op-status');
+
+        function requestJson(url, options) {
+            return fetch(url, options).then(function (r) { return r.json(); });
+        }
+
+        function setStatus(type, msg) {
+            opStatus.className = 'op-status show ' + type;
+            opStatus.textContent = msg;
+        }
+
+        function cnMessage(msg) {
+            var m = String(msg || '');
+            if (m === 'start_date must be <= end_date') return '开始日期不能晚于结束日期';
+            return m || '未知错误';
+        }
+
+        function fmt(v) { return Number(v || 0).toFixed(4); }
+
+        function enableDatePickerQuickOpen() {
+            document.querySelectorAll('input[type="date"]').forEach(function (el) {
+                var open = function () {
+                    if (typeof el.showPicker === 'function') {
+                        try { el.showPicker(); } catch (e) {}
+                    }
+                };
+                el.addEventListener('focus', open);
+                el.addEventListener('click', open);
+                el.addEventListener('pointerdown', open);
+            });
+        }
+
+        var chart = echarts.init(document.getElementById('nav-chart'));
+
+        function draw(rows) {
+            if (!rows || rows.length === 0) {
+                document.getElementById('nav-chart').innerHTML = '<div class="empty-tip">暂无数据</div>';
+                document.getElementById('data-table').innerHTML = '';
+                return;
+            }
+
+            var x = rows.map(function (r) { return r.date; });
+            var y = rows.map(function (r) { return r.nav; });
+
+            chart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: 50, right: 20, bottom: 40, top: 20 },
+                xAxis: { type: 'category', data: x, axisLabel: { rotate: 28, color: '#9db4e8' } },
+                yAxis: { type: 'value', axisLabel: { color: '#9db4e8' } },
+                dataZoom: [
+                    { type: 'inside' },
+                    {
+                        type: 'slider',
+                        height: 16,
+                        bottom: 0,
+                        borderColor: 'rgba(83,168,255,0.25)',
+                        backgroundColor: 'rgba(14,23,51,0.85)',
+                        fillerColor: 'rgba(83,168,255,0.22)',
+                        handleIcon: 'M8.7,11.8v-7.6h1.6v7.6z M13.7,11.8v-7.6h1.6v7.6z',
+                        handleSize: '110%',
+                        handleStyle: {
+                            color: '#53a8ff',
+                            borderColor: '#2bf2e2',
+                            shadowBlur: 8,
+                            shadowColor: 'rgba(83,168,255,0.6)'
+                        },
+                        moveHandleStyle: { color: 'rgba(83,168,255,0.55)' },
+                        textStyle: { color: '#9db4e8' }
+                    }
+                ],
+                series: [{ type: 'line', data: y, smooth: true, lineStyle: { width: 2, color: '#00e8d3' } }]
+            });
+
+            var html = '<table class="data-table"><thead><tr><th>日期</th><th>单位净值</th><th>涨跌幅</th><th>成交量</th></tr></thead><tbody>';
+            rows.forEach(function (r) {
+                html += '<tr><td>' + r.date + '</td><td>' + fmt(r.nav) + '</td><td>' + (Number(r.pct_change || 0) * 100).toFixed(2) + '%</td><td>' + r.volume + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('data-table').innerHTML = html;
+        }
+
+        document.getElementById('data-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            setStatus('loading', '正在查询数据，请稍候...');
+            var code = document.getElementById('code').value || '510300';
+            var start = document.getElementById('start').value;
+            var end = document.getElementById('end').value;
+            requestJson('/api/data/etf/' + code + '?start=' + start + '&end=' + end).then(function (resp) {
+                if (resp.status_code !== 0) {
+                    setStatus('error', '查询失败：' + cnMessage(resp.message));
+                    return;
+                }
+                var d = resp.data || {};
+                draw(d.records || []);
+                var status = d.cache_hit ? '命中' : '未命中';
+                var sourceMap = { live_akshare: '实时数据', local_csv: '本地历史数据', synthetic: '模拟数据' };
+                var sourceText = sourceMap[d.source] || d.source || '未知';
+                document.getElementById('data-status').textContent = '数据来源：' + sourceText + '；缓存状态：' + status + '；更新时间：' + (d.generated_at || '-');
+                setStatus('success', '查询成功，结果已更新（来源：' + sourceText + '）。');
+            });
+        });
+
+        document.getElementById('refresh-data').addEventListener('click', function () {
+            document.getElementById('data-status').textContent = '正在刷新数据...';
+            setStatus('loading', '正在刷新并查询最新数据...');
+            document.getElementById('data-form').dispatchEvent(new Event('submit'));
+        });
+
+        enableDatePickerQuickOpen();
+        document.getElementById('data-form').dispatchEvent(new Event('submit'));
+        window.addEventListener('resize', function () { chart.resize(); });
+    })();
+    </script>
+</body>
+</html>

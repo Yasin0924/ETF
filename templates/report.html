@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETF 组合回测报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; margin: 0; padding: 20px; background: radial-gradient(circle at 10% 0%, rgba(49,116,255,0.22), transparent 34%), radial-gradient(circle at 90% 100%, rgba(0,232,211,0.16), transparent 34%), linear-gradient(135deg,#060a18,#0b1230 48%,#121a3b); color: #dbe6ff; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { background: rgba(17, 24, 52, 0.74); padding: 24px; border-radius: 14px; border: 1px solid rgba(111,168,255,0.2); box-shadow: 0 18px 40px rgba(2,6,20,0.34); margin-bottom: 20px; }
+        h1 { color: #f6f9ff; margin: 0 0 4px; font-size: 1.6em; }
+        h2 { color: #ecf2ff; margin: 0 0 16px; font-size: 1.2em; border-bottom: 1px solid rgba(111,168,255,0.25); padding-bottom: 8px; }
+        .report-date { color: #95a8d8; font-size: 0.85em; }
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+        .metric-card { background: linear-gradient(180deg, rgba(20,31,67,0.9), rgba(13,21,48,0.9)); padding: 14px; border-radius: 10px; border: 1px solid rgba(111,168,255,0.2); }
+        .metric-label { font-size: 0.78em; color: #95a8d8; letter-spacing: 0.5px; }
+        .metric-value { font-size: 1.3em; font-weight: 700; margin-top: 4px; color: #e7efff; }
+        .positive { color: #59f2a6; }
+        .negative { color: #ff607d; }
+        .echart-box { width: 100%; height: 400px; }
+        .echart-box-sm { width: 100%; height: 280px; }
+        .chart-fallback img { max-width: 100%; border-radius: 4px; }
+        table { border-collapse: collapse; width: 100%; font-size: 0.88em; }
+        thead th { background: rgba(44,72,146,0.55); color: #f0f5ff; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
+        tbody td { padding: 8px 12px; border-bottom: 1px solid rgba(111,168,255,0.14); }
+        tbody tr:hover { background: rgba(83,168,255,0.1); }
+        .type-buy { color: #2e7d32; font-weight: 600; }
+        .type-sell, .type-take_profit, .type-stop_loss { color: #c62828; font-weight: 600; }
+        .risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .risk-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .risk-label { color: #666; }
+        .risk-value { font-weight: 600; }
+        .trade-log-wrap { max-height: 400px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; }
+        @media (max-width: 768px) {
+            .risk-grid { grid-template-columns: 1fr; }
+            .metric-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>ETF 组合回测报告</h1>
+            <p class="report-date">生成日期：{{ report_date }}</p>
+        </div>
+
+        <div class="card">
+            <h2>绩效总览</h2>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">初始资金</div>
+                    <div class="metric-value">{{ "%.2f"|format(metrics.initial_capital) }}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">期末资产</div>
+                    <div class="metric-value {% if metrics.final_value > metrics.initial_capital %}positive{% else %}negative{% endif %}">
+                        {{ "%.2f"|format(metrics.final_value) }}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">累计收益率</div>
+                    <div class="metric-value {% if metrics.total_return > 0 %}positive{% else %}negative{% endif %}">
+                        {{ "%.2f%%"|format(metrics.total_return * 100) }}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">年化收益率</div>
+                    <div class="metric-value {% if metrics.annual_return > 0 %}positive{% else %}negative{% endif %}">
+                        {{ "%.2f%%"|format(metrics.annual_return * 100) }}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">最大回撤</div>
+                    <div class="metric-value negative">{{ "%.2f%%"|format(metrics.max_drawdown * 100) }}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">夏普比率</div>
+                    <div class="metric-value">{{ "%.2f"|format(metrics.sharpe_ratio) }}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">波动率</div>
+                    <div class="metric-value">{{ "%.2f%%"|format(metrics.volatility * 100) }}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">胜率</div>
+                    <div class="metric-value">{{ "%.1f%%"|format(metrics.win_rate * 100) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>净值曲线</h2>
+            {% if echarts_equity %}
+            <div id="equity-chart" class="echart-box"></div>
+            {% elif equity_chart %}
+            <div class="chart-fallback"><img src="data:image/png;base64,{{ equity_chart }}" alt="Equity Curve"></div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>回撤曲线</h2>
+            {% if echarts_drawdown %}
+            <div id="drawdown-chart" class="echart-box-sm"></div>
+            {% elif drawdown_chart %}
+            <div class="chart-fallback"><img src="data:image/png;base64,{{ drawdown_chart }}" alt="Drawdown"></div>
+            {% endif %}
+        </div>
+
+        {% if echarts_position %}
+        <div class="card">
+            <h2>持仓占比堆叠图</h2>
+            <div id="position-chart" class="echart-box"></div>
+        </div>
+        {% endif %}
+
+        {% if trade_log %}
+        <div class="card">
+            <h2>交易日志（{{ trade_log|length }} 笔）</h2>
+            <div class="trade-log-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>代码</th>
+                            <th>类型</th>
+                            <th>NAV</th>
+                            <th>金额/份额</th>
+                            <th>费用</th>
+                            <th>原因</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in trade_log %}
+                        <tr>
+                            <td>{{ t.date }}</td>
+                            <td>{{ t.code }}</td>
+                            <td class="type-{{ t.type }}">{{ t.type }}</td>
+                            <td>{{ "%.4f"|format(t.nav) }}</td>
+                            <td>
+                                {% if t.amount is defined %}{{ "%.2f"|format(t.amount) }}
+                                {% elif t.shares is defined %}{{ "%.2f"|format(t.shares) }} shares{% endif %}
+                            </td>
+                            <td>{{ "%.2f"|format(t.fee) if t.fee is defined else '-' }}</td>
+                            <td>{{ t.reason }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <h2>风险分析</h2>
+            <div class="risk-grid">
+                <div class="risk-item">
+                    <span class="risk-label">最大回撤</span>
+                    <span class="risk-value negative">{{ "%.2f%%"|format(metrics.max_drawdown * 100) }}</span>
+                </div>
+                {% if metrics.max_drawdown_duration is defined %}
+                <div class="risk-item">
+                    <span class="risk-label">最大回撤持续期</span>
+                    <span class="risk-value">{{ metrics.max_drawdown_duration }} 天</span>
+                </div>
+                {% endif %}
+                <div class="risk-item">
+                    <span class="risk-label">夏普比率</span>
+                    <span class="risk-value">{{ "%.3f"|format(metrics.sharpe_ratio) }}</span>
+                </div>
+                <div class="risk-item">
+                    <span class="risk-label">年化波动率</span>
+                    <span class="risk-value">{{ "%.2f%%"|format(metrics.volatility * 100) }}</span>
+                </div>
+                <div class="risk-item">
+                    <span class="risk-label">胜率</span>
+                    <span class="risk-value">{{ "%.1f%%"|format(metrics.win_rate * 100) }}</span>
+                </div>
+                <div class="risk-item">
+                    <span class="risk-label">总交易次数</span>
+                    <span class="risk-value">{{ metrics.total_trades }}</span>
+                </div>
+                {% if metrics.holding_days is defined %}
+                <div class="risk-item">
+                    <span class="risk-label">持有周期</span>
+                    <span class="risk-value">{{ metrics.holding_days }} 天</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>指标明细</h2>
+            <table>
+                <thead><tr><th>指标</th><th>数值</th></tr></thead>
+                <tbody>
+                    {% for key, value in metrics.items() %}
+                    <tr>
+                        <td>{{ key }}</td>
+                        <td>{% if value is number %}{{ "%.4f"|format(value) }}{% else %}{{ value }}{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        {% if echarts_equity %}
+        var eqData = {{ echarts_equity|safe }};
+        var eqChart = echarts.init(document.getElementById('equity-chart'));
+        var eqSeries = [{name: 'Portfolio', type: 'line', data: eqData.portfolio, smooth: true, lineStyle: {width: 2}, itemStyle: {color: '#2196F3'}, areaStyle: {color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(33,150,243,0.15)'},{offset:1,color:'rgba(33,150,243,0)'}])}}];
+        if (eqData.benchmark) {
+            eqSeries.push({name: 'Benchmark', type: 'line', data: eqData.benchmark, smooth: true, lineStyle: {width: 1, type: 'dashed'}, itemStyle: {color: '#9E9E9E'}});
+        }
+        eqChart.setOption({tooltip: {trigger: 'axis', formatter: function(p){var s=p[0].axisValue;p.forEach(function(i){s+='<br/>'+i.marker+i.seriesName+': '+Number(i.value).toFixed(2);});return s;}}, legend: {top: 5}, grid: {left: 60, right: 20, bottom: 30, top: 40}, xAxis: {type: 'category', data: eqData.dates, axisLabel: {rotate: 30}}, yAxis: {type: 'value', axisLabel: {formatter: function(v){return v>=10000?(v/10000).toFixed(1)+'w':v;}}}, dataZoom: [{type: 'inside'}, {type: 'slider', height: 20, bottom: 0}], series: eqSeries});
+        window.addEventListener('resize', function(){eqChart.resize();});
+        {% endif %}
+
+        {% if echarts_drawdown %}
+        var ddData = {{ echarts_drawdown|safe }};
+        var ddChart = echarts.init(document.getElementById('drawdown-chart'));
+        ddChart.setOption({tooltip: {trigger: 'axis', formatter: function(p){return p[0].axisValue+'<br/>Drawdown: '+(p[0].value*100).toFixed(2)+'%';}}, grid: {left: 60, right: 20, bottom: 30, top: 20}, xAxis: {type: 'category', data: ddData.dates, axisLabel: {rotate: 30}}, yAxis: {type: 'value', axisLabel: {formatter: function(v){return (v*100).toFixed(0)+'%';}}}, dataZoom: [{type: 'inside'}], series: [{type: 'line', data: ddData.drawdown, lineStyle: {color: '#F44336', width: 1}, areaStyle: {color: 'rgba(244,67,54,0.2)'}, itemStyle: {color: '#F44336'}}]});
+        window.addEventListener('resize', function(){ddChart.resize();});
+        {% endif %}
+
+        {% if echarts_position %}
+        var posData = {{ echarts_position|safe }};
+        var posChart = echarts.init(document.getElementById('position-chart'));
+        var colors = ['#2196F3','#4CAF50','#FF9800','#9C27B0','#F44336','#00BCD4','#795548'];
+        var posSeries = [];
+        var keys = Object.keys(posData.series);
+        keys.forEach(function(k, i){
+            posSeries.push({name: k, type: 'line', stack: 'pos', areaStyle: {}, data: posData.series[k], itemStyle: {color: colors[i % colors.length]}});
+        });
+        posChart.setOption({tooltip: {trigger: 'axis'}, legend: {top: 5, data: keys}, grid: {left: 60, right: 20, bottom: 30, top: 40}, xAxis: {type: 'category', data: posData.dates, axisLabel: {rotate: 30}}, yAxis: {type: 'value', max: 1, axisLabel: {formatter: function(v){return (v*100).toFixed(0)+'%';}}}, dataZoom: [{type: 'inside'}], series: posSeries});
+        window.addEventListener('resize', function(){posChart.resize();});
+        {% endif %}
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+system:
+  data_dir: "data"
+  log_level: "INFO"
+  cache_ttl_hours: 24
+
+backtest:
+  initial_capital: 100000
+  # DD-2: No slippage for off-exchange funds (trade at declared NAV)
+  min_trade_amount: 10   # 最小交易金额10元
+  benchmark: "000300"    # 沪深300
+  risk_free_rate: 0.02   # 2% annual
+
+trading:
+  min_cash_ratio: 0.05   # 组合现金储备5%
+  max_cash_ratio: 0.10   # 最高10%
+  max_industry_ratio: 0.40  # 单行业不超40%

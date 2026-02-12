@@ -1,0 +1,20 @@
+primary:
+  name: "akshare_sina"
+  retry_count: 3
+  retry_delay_seconds: 2
+
+fallback:
+  - name: "akshare_eastmoney"
+    retry_count: 2
+    retry_delay_seconds: 3
+
+update:
+  daily_increment: true
+  weekly_full_check: true
+  full_check_day: "Sunday"
+
+etf_categories:
+  broad_market: ["510300", "510500", "159915"]   # 沪深300/中证500/创业板
+  sector: ["512010", "512660", "512800"]          # 医药/军工/银行
+  dividend: ["510880", "512890"]                  # 红利ETF
+  gold: ["518880"]                                # 黄金ETF

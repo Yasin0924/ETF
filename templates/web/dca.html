@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>定投模拟 - ETF 组合分析系统</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <a href="/" class="logo" style="display:block;text-decoration:none;color:inherit;">ETF 智能投研系统</a>
+        <a href="/" class="nav-item">组合总览</a>
+        <a href="/backtest" class="nav-item">策略回测</a>
+        <a href="/screening" class="nav-item">基金筛选</a>
+        <a href="/strategy" class="nav-item">策略参数</a>
+        <a href="/dca" class="nav-item active">定投模拟</a>
+        <a href="/data" class="nav-item">数据查询</a>
+    </nav>
+
+    <main class="content">
+        <header class="topbar"><h1>定投模拟器</h1></header>
+        <div id="op-status" class="op-status" role="status" aria-live="polite"></div>
+
+        <section class="card">
+            <h3>模拟参数</h3>
+            <form id="dca-form" class="form-grid">
+                <div class="form-group"><label>基金代码</label><input id="code" value="510300"></div>
+                <div class="form-group"><label>定投金额</label><input id="amount" type="number" value="1000" min="100"></div>
+                <div class="form-group"><label>模式</label><select id="mode"><option value="fixed_amount">固定金额</option><option value="fixed_shares">固定份额</option></select></div>
+                <div class="form-group"><label>分红方式</label><select id="dividend_mode"><option value="cash">现金分红</option><option value="reinvest">红利再投资</option></select></div>
+                <div class="form-group"><label>周期(天)</label><input id="interval" type="number" value="30" min="1"></div>
+                <div class="form-group"><label>开始日期</label><input id="start" type="date" value="2024-01-01"></div>
+                <div class="form-group"><label>结束日期</label><input id="end" type="date" value="2024-12-31"></div>
+                <div class="form-group form-action"><button class="btn-primary" type="submit">开始模拟</button></div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h3>模拟结果</h3>
+            <div id="dca-summary" class="kpi-row"></div>
+            <div id="dca-records" style="max-height:360px;overflow-y:auto;"></div>
+        </section>
+    </main>
+
+    <script>
+    (function () {
+        var opStatus = document.getElementById('op-status');
+
+        function requestJson(url, options) {
+            return fetch(url, options).then(function (r) { return r.json(); });
+        }
+
+        function setStatus(type, msg) {
+            opStatus.className = 'op-status show ' + type;
+            opStatus.textContent = msg;
+        }
+
+        function cnMessage(msg) {
+            var m = String(msg || '');
+            if (m === 'dca_mode must be \'fixed_amount\' or \'fixed_shares\'') return '定投模式仅支持固定金额或固定份额';
+            if (m === 'dca_amount must be positive') return '定投金额必须大于0';
+            if (m === 'insufficient funds') return '资金不足，无法完成本次定投';
+            return m || '未知错误';
+        }
+
+        function fmt(v) { return Number(v || 0).toFixed(2); }
+        function pct(v) { return (Number(v || 0) * 100).toFixed(2) + '%'; }
+        function fmtDateCn(v) {
+            if (!v) return '-';
+            var s = String(v);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            var d = new Date(s);
+            if (isNaN(d.getTime())) return s;
+            var y = d.getFullYear();
+            var m = String(d.getMonth() + 1).padStart(2, '0');
+            var day = String(d.getDate()).padStart(2, '0');
+            return y + '-' + m + '-' + day;
+        }
+
+        function enableDatePickerQuickOpen() {
+            document.querySelectorAll('input[type="date"]').forEach(function (el) {
+                var open = function () {
+                    if (typeof el.showPicker === 'function') {
+                        try { el.showPicker(); } catch (e) {}
+                    }
+                };
+                el.addEventListener('focus', open);
+                el.addEventListener('click', open);
+                el.addEventListener('pointerdown', open);
+            });
+        }
+
+        document.getElementById('dca-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            setStatus('loading', '正在执行定投模拟，请稍候...');
+            var body = {
+                code: document.getElementById('code').value,
+                amount: Number(document.getElementById('amount').value),
+                mode: document.getElementById('mode').value,
+                interval_days: Number(document.getElementById('interval').value),
+                start_date: document.getElementById('start').value,
+                end_date: document.getElementById('end').value,
+                dividend_mode: document.getElementById('dividend_mode').value
+            };
+
+            requestJson('/api/dca/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (resp) {
+                if (resp.status_code !== 0) {
+                    setStatus('error', '模拟失败：' + cnMessage(resp.message));
+                    return;
+                }
+
+                var d = resp.data || {};
+                var cards = [
+                    ['累计投入', fmt(d.total_invested)],
+                    ['累计份额', fmt(d.total_shares)],
+                    ['平均成本', fmt(d.avg_cost)],
+                    ['当前市值', fmt(d.current_value)],
+                    ['累计收益率', pct(d.total_return)],
+                    ['分红方式', d.dividend_mode === 'reinvest' ? '红利再投资' : '现金分红']
+                ];
+
+                document.getElementById('dca-summary').innerHTML = cards.map(function (i) {
+                    return '<div class="kpi-card"><div class="kpi-label">' + i[0] + '</div><div class="kpi-value">' + i[1] + '</div></div>';
+                }).join('');
+
+                var html = '<table class="data-table"><thead><tr><th>计划日期</th><th>成交日期</th><th>单位净值</th><th>投入金额</th><th>费用</th><th>份额</th></tr></thead><tbody>';
+                (d.purchase_records || []).forEach(function (x) {
+                    html += '<tr><td>' + fmtDateCn(x.scheduled_date) + '</td><td>' + fmtDateCn(x.trade_date) + '</td><td>' + fmt(x.nav) + '</td><td>' + fmt(x.amount) + '</td><td>' + fmt(x.fee) + '</td><td>' + fmt(x.shares) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('dca-records').innerHTML = html;
+                var sourceMap = { live_akshare: '实时数据', local_csv: '本地历史数据', synthetic: '模拟数据' };
+                var sourceText = sourceMap[d.data_source] || '未知';
+                setStatus('success', '定投模拟完成（来源：' + sourceText + '）。');
+            });
+        });
+
+        enableDatePickerQuickOpen();
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>基金筛选 - ETF 组合分析系统</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <a href="/" class="logo" style="display:block;text-decoration:none;color:inherit;">ETF 智能投研系统</a>
+        <a href="/" class="nav-item">组合总览</a>
+        <a href="/backtest" class="nav-item">策略回测</a>
+        <a href="/screening" class="nav-item active">基金筛选</a>
+        <a href="/strategy" class="nav-item">策略参数</a>
+        <a href="/dca" class="nav-item">定投模拟</a>
+        <a href="/data" class="nav-item">数据查询</a>
+    </nav>
+    <main class="content">
+        <header class="topbar">
+            <h1>基金筛选</h1>
+        </header>
+        <div id="op-status" class="op-status" role="status" aria-live="polite"></div>
+
+        <section class="card">
+            <h3>筛选条件</h3>
+            <form id="screen-form" class="form-grid">
+                <div class="form-group">
+                    <label for="min_size">最小基金规模 (元)</label>
+                    <input type="number" id="min_size" value="100000000" min="0" step="10000000">
+                </div>
+                <div class="form-group">
+                    <label for="max_fee">最大管理费率</label>
+                    <input type="number" id="max_fee" value="0.005" min="0" max="0.05" step="0.001">
+                </div>
+                <div class="form-group category-row">
+                    <label>基金类型</label>
+                    <div class="checkbox-group one-line">
+                        <label><input type="checkbox" name="cat" value="宽基" checked> 宽基</label>
+                        <label><input type="checkbox" name="cat" value="红利"> 红利</label>
+                        <label><input type="checkbox" name="cat" value="黄金"> 黄金</label>
+                        <label><input type="checkbox" name="cat" value="行业成长"> 行业成长</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pe_percentile_max">PE分位上限</label>
+                    <input type="number" id="pe_percentile_max" value="0.35" min="0" max="1" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="pb_percentile_max">PB分位上限</label>
+                    <input type="number" id="pb_percentile_max" value="0.45" min="0" max="1" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="roe_min">ROE下限</label>
+                    <input type="number" id="roe_min" value="0.08" min="0" max="1" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="tracking_error_max">跟踪误差上限</label>
+                    <input type="number" id="tracking_error_max" value="0.03" min="0" max="0.2" step="0.001">
+                </div>
+                <div class="form-group form-action">
+                    <button type="submit" class="btn-primary">执行筛选</button>
+                </div>
+            </form>
+        </section>
+
+        <section id="results-section" style="display:none;">
+            <div class="card">
+                <h3>筛选结果（<span id="result-count">0</span> 只）</h3>
+                <p class="empty-tip" style="padding: 0 0 12px 0; text-align:left;">可将目标基金加入“候选策略池”，然后在“策略参数”页一键应用为目标权重。</p>
+                <p class="empty-tip" style="padding: 0 0 8px 0; text-align:left;">点击表头可排序，支持导出当前筛选结果。</p>
+                <div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button id="export-screening" type="button" class="btn-secondary">导出筛选结果</button>
+                </div>
+                <div id="results-table" style="overflow-x:auto;"></div>
+                <div id="pool-msg" class="empty-tip" style="padding-top:12px;text-align:left;"></div>
+            </div>
+        </section>
+
+        <div id="loading" style="display:none;text-align:center;padding:60px;">
+            <div style="font-size:1.2em;color:#53a8ff;">筛选中...</div>
+        </div>
+
+        <div id="empty-state" class="card" style="text-align:center;padding:60px;color:#999;">
+            请输入筛选条件后执行筛选。
+        </div>
+    </main>
+
+    <script>
+    (function(){
+        var form = document.getElementById('screen-form');
+        var resultsSection = document.getElementById('results-section');
+        var loading = document.getElementById('loading');
+        var emptyState = document.getElementById('empty-state');
+        var opStatus = document.getElementById('op-status');
+        var currentResults = [];
+        var sortState = { key: '', asc: true };
+
+        function setStatus(type, msg) {
+            opStatus.className = 'op-status show ' + type;
+            opStatus.textContent = msg;
+        }
+
+        form.addEventListener('submit', function(e){
+            e.preventDefault();
+            emptyState.style.display = 'none';
+            resultsSection.style.display = 'none';
+            loading.style.display = 'block';
+            setStatus('loading', '正在筛选基金，请稍候...');
+
+            var cats = [];
+            document.querySelectorAll('input[name="cat"]:checked').forEach(function(cb){
+                cats.push(cb.value);
+            });
+
+            var body = {
+                min_size: parseFloat(document.getElementById('min_size').value),
+                max_fee: parseFloat(document.getElementById('max_fee').value),
+                categories: cats,
+                pe_percentile_max: parseFloat(document.getElementById('pe_percentile_max').value),
+                pb_percentile_max: parseFloat(document.getElementById('pb_percentile_max').value),
+                roe_min: parseFloat(document.getElementById('roe_min').value),
+                tracking_error_max: parseFloat(document.getElementById('tracking_error_max').value)
+            };
+
+            fetch('/api/selection/screen', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            })
+            .then(function(r){return r.json();})
+            .then(function(resp){
+                loading.style.display = 'none';
+                if (resp.status_code !== 0) {
+                    setStatus('error', '筛选失败：' + (resp.message || '未知错误'));
+                    return;
+                }
+                resultsSection.style.display = 'block';
+                renderResults(resp.data);
+                if ((resp.data && resp.data.total) > 0) {
+                    setStatus('success', '筛选完成，可继续排序或导出。');
+                } else {
+                    setStatus('error', (resp.data && resp.data.hint) ? resp.data.hint : '暂无符合条件的基金。');
+                }
+            })
+            .catch(function(err){
+                loading.style.display = 'none';
+                setStatus('error', '请求失败：' + (err.message || '网络异常'));
+            });
+        });
+
+        function renderResults(data) {
+            var results = data.results || [];
+            currentResults = results.slice();
+            document.getElementById('result-count').textContent = data.total || results.length;
+
+            if (results.length === 0) {
+                var hint = data.hint || '没有符合条件的基金，请调整参数后重试。';
+                var sug = (data.diagnostics || {}).suggested_criteria || {};
+                var html0 = '<div class="empty-tip" style="text-align:left;padding:18px 0;">'
+                    + '<p style="padding:0;margin:0 0 10px 0;">' + hint + '</p>';
+                if (Object.keys(sug).length) {
+                    html0 += '<p style="padding:0;margin:0 0 10px 0;">推荐参数：'
+                        + 'PE分位上限 ≤ ' + sug.pe_percentile_max + '，'
+                        + 'PB分位上限 ≤ ' + sug.pb_percentile_max + '，'
+                        + 'ROE下限 ≥ ' + sug.roe_min + '，'
+                        + '跟踪误差上限 ≤ ' + sug.tracking_error_max
+                        + '</p>'
+                        + '<button id="apply-suggested" type="button" class="btn-secondary">一键应用推荐参数并重试</button>';
+                }
+                html0 += '</div>';
+                document.getElementById('results-table').innerHTML = html0;
+                if (Object.keys(sug).length) {
+                    document.getElementById('apply-suggested').addEventListener('click', function(){
+                        document.getElementById('pe_percentile_max').value = sug.pe_percentile_max;
+                        document.getElementById('pb_percentile_max').value = sug.pb_percentile_max;
+                        document.getElementById('roe_min').value = sug.roe_min;
+                        document.getElementById('tracking_error_max').value = sug.tracking_error_max;
+                        setStatus('loading', '已应用推荐参数，正在重试筛选...');
+                        form.dispatchEvent(new Event('submit'));
+                    });
+                }
+                return;
+            }
+
+            var html = '<table class="data-table"><thead><tr>'+
+                '<th data-sort="code">代码</th><th data-sort="name">名称</th><th data-sort="category">类型</th>'+
+                '<th data-sort="size">规模(亿元)</th><th data-sort="fee">费率</th><th data-sort="pe_percentile">PE分位</th>'+
+                '<th data-sort="pb_percentile">PB分位</th><th data-sort="roe">ROE</th><th data-sort="tracking_error">跟踪误差</th>'+
+                '<th data-sort="return_1y">近1年收益</th><th>操作</th></tr></thead><tbody>';
+            results.forEach(function(r){
+                var item = encodeURIComponent(JSON.stringify({code:r.code,name:r.name,category:r.category}));
+                html += '<tr><td>'+r.code+'</td><td>'+r.name+'</td><td>'+r.category+'</td><td>'+(r.size/1e8).toFixed(2)+'</td><td>'+(r.fee*100).toFixed(2)+'%</td><td>'+(r.pe_percentile*100).toFixed(1)+'%</td><td>'+(r.pb_percentile*100).toFixed(1)+'%</td><td>'+(r.roe*100).toFixed(1)+'%</td><td>'+(r.tracking_error*100).toFixed(2)+'%</td><td class="'+(r.return_1y>0?'positive':'negative')+'">'+(r.return_1y*100).toFixed(2)+'%</td><td><button class="btn-secondary add-pool-btn" data-item="'+item+'">加入策略池</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('results-table').innerHTML = html;
+
+            document.querySelectorAll('#results-table th[data-sort]').forEach(function(th){
+                th.style.cursor = 'pointer';
+                th.addEventListener('click', function(){
+                    var key = th.getAttribute('data-sort');
+                    if (sortState.key === key) {
+                        sortState.asc = !sortState.asc;
+                    } else {
+                        sortState.key = key;
+                        sortState.asc = true;
+                    }
+                    currentResults.sort(function(a, b){
+                        var av = a[key];
+                        var bv = b[key];
+                        if (typeof av === 'string' && typeof bv === 'string') {
+                            return sortState.asc ? av.localeCompare(bv, 'zh-CN') : bv.localeCompare(av, 'zh-CN');
+                        }
+                        return sortState.asc ? (av - bv) : (bv - av);
+                    });
+                    renderResults({ results: currentResults, total: currentResults.length });
+                });
+            });
+
+            document.querySelectorAll('.add-pool-btn').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var raw = btn.getAttribute('data-item');
+                    var item = JSON.parse(decodeURIComponent(raw));
+                    var key = 'etf_candidate_pool';
+                    var current = [];
+                    try {
+                        current = JSON.parse(localStorage.getItem(key) || '[]');
+                    } catch (e) {
+                        current = [];
+                    }
+                    if (!current.some(function(x){ return x.code === item.code; })) {
+                        current.push(item);
+                        localStorage.setItem(key, JSON.stringify(current));
+                    }
+                    document.getElementById('pool-msg').textContent = '已加入候选策略池：' + item.code + ' ' + item.name;
+                    setStatus('success', '已加入候选策略池：' + item.code);
+                });
+            });
+        }
+
+        document.getElementById('export-screening').addEventListener('click', function(){
+            if (!currentResults.length) {
+                document.getElementById('pool-msg').textContent = '暂无可导出的筛选结果。';
+                setStatus('error', '暂无可导出的筛选结果。');
+                return;
+            }
+            var header = ['代码','名称','类型','规模(亿元)','费率','PE分位','PB分位','ROE','跟踪误差','近1年收益'];
+            var lines = [header.join(',')];
+            currentResults.forEach(function(r){
+                lines.push([
+                    r.code,
+                    r.name,
+                    r.category,
+                    (r.size/1e8).toFixed(2),
+                    (r.fee*100).toFixed(2)+'%',
+                    (r.pe_percentile*100).toFixed(1)+'%',
+                    (r.pb_percentile*100).toFixed(1)+'%',
+                    (r.roe*100).toFixed(1)+'%',
+                    (r.tracking_error*100).toFixed(2)+'%',
+                    (r.return_1y*100).toFixed(2)+'%'
+                ].join(','));
+            });
+            var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = '筛选结果.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            document.getElementById('pool-msg').textContent = '已导出筛选结果。';
+            setStatus('success', '筛选结果导出成功。');
+        });
+    })();
+    </script>
+</body>
+</html>

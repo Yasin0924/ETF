@@ -1,0 +1,35 @@
+semi_monthly_rebalance:
+  rebalance_day: [1, 16]        # 每月1日和16日
+  deviation_single: 0.05         # 单只偏离±5%
+  deviation_portfolio: 0.03      # 组合整体偏离±3%
+
+  buy_signal:
+    broad_market:
+      pe_percentile_threshold: 0.20    # PE近5年20%分位以下
+      daily_drop_trigger: -0.03        # 单日大跌3%
+    gold:
+      daily_drop_trigger: -0.05        # 黄金单日下跌5%
+    sector:
+      daily_drop_trigger: -0.03        # 行业ETF单日下跌3%
+
+  take_profit:
+    tier1:
+      return_threshold: 0.15     # 收益率达15%
+      reduce_ratio: 0.20         # 减仓20%
+    tier2:
+      return_threshold: 0.30     # 收益率达30%
+      reduce_ratio: 0.30         # 减仓30%
+    valuation_exit:
+      pe_percentile_threshold: 0.80   # PE近5年80%分位以上
+
+  stop_loss:
+    ma_break:
+      ma_period: 20              # 20日均线
+      daily_drop: -0.05          # 单日大跌5%
+      confirm_days: 3            # 连续3日确认
+      reduce_ratio: 0.50         # 减仓50%
+    single_max_drawdown: -0.20   # 单只最大回撤20%清仓
+    portfolio_drawdown:
+      pause_add_threshold: -0.10  # 组合回撤10%暂停加仓
+      force_reduce_threshold: -0.15  # 组合回撤15%强制减仓
+      force_reduce_ratio: 0.20   # 减仓20%

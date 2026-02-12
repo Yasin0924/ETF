@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETF 智能研投系统 - 首页</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg-0: #060a18;
+            --bg-1: #0b1230;
+            --bg-2: #121a3b;
+            --glass: rgba(17, 24, 52, 0.74);
+            --line: rgba(111, 168, 255, 0.2);
+            --line-strong: rgba(111, 168, 255, 0.42);
+            --text: #e8f0ff;
+            --text-dim: #95a8d8;
+            --primary: #53a8ff;
+            --success: #60f2a9;
+            --danger: #ff6585;
+            --max: 1220px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(1000px 520px at 80% -20%, rgba(83, 168, 255, 0.20), transparent 55%),
+                radial-gradient(740px 380px at 10% 0%, rgba(43, 242, 226, 0.11), transparent 50%),
+                linear-gradient(140deg, var(--bg-0), var(--bg-1) 48%, var(--bg-2));
+            min-height: 100vh;
+            padding: 18px;
+        }
+
+        .wrap { max-width: var(--max); margin: 0 auto; }
+
+        .topnav {
+            margin-bottom: 18px;
+            backdrop-filter: blur(14px);
+            background: rgba(8, 14, 34, 0.64);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .logo-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, var(--primary), #2bf2e2);
+            box-shadow: 0 0 16px rgba(83, 168, 255, 0.8);
+        }
+
+        .brand h1 { font-size: 1.04rem; letter-spacing: 0.5px; }
+        .brand small { color: var(--text-dim); font-size: 0.78rem; }
+
+        .nav-links { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .nav-links a {
+            color: #d8e6ff;
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            font-size: 0.9rem;
+            transition: all 0.16s ease;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            border-color: var(--line-strong);
+            background: rgba(83, 168, 255, 0.11);
+        }
+
+        .hero {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: linear-gradient(120deg, rgba(15, 24, 54, 0.86), rgba(11, 17, 39, 0.86));
+            backdrop-filter: blur(14px);
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .hero h2 {
+            font-size: 1.62rem;
+            line-height: 1.22;
+            margin-bottom: 8px;
+            max-width: 760px;
+        }
+
+        .hero p {
+            color: var(--text-dim);
+            line-height: 1.6;
+            max-width: 760px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .kpi {
+            background: var(--glass);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+
+        .kpi .label { color: var(--text-dim); font-size: 0.75rem; }
+        .kpi .value { font-size: 1.18rem; font-weight: 700; margin-top: 4px; }
+        .pos { color: var(--success); }
+        .neg { color: var(--danger); }
+
+        .module-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .module-card {
+            display: block;
+            text-decoration: none;
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--glass);
+            padding: 12px;
+            transition: all 0.16s ease;
+        }
+
+        .module-card:hover {
+            border-color: var(--line-strong);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(53, 136, 255, 0.22);
+        }
+
+        .module-card b { display: block; font-size: 0.95rem; margin-bottom: 4px; }
+        .module-card span { color: var(--text-dim); font-size: 0.78rem; }
+
+        .section-grid {
+            display: grid;
+            grid-template-columns: 1.55fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .glass {
+            background: var(--glass);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            padding: 16px;
+        }
+
+        .section-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .section-title h3 { font-size: 1rem; }
+        .section-title span { color: var(--text-dim); font-size: 0.8rem; }
+
+        .params-list {
+            max-height: none;
+            overflow: visible;
+            font-size: 0.88rem;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(83, 168, 255, 0.85) rgba(14, 23, 51, 0.6);
+        }
+
+        .params-list::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        .params-list::-webkit-scrollbar-track {
+            background: rgba(14, 23, 51, 0.6);
+            border-radius: 999px;
+        }
+
+        .params-list::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #53a8ff, #2bf2e2);
+            border-radius: 999px;
+            border: 2px solid rgba(14, 23, 51, 0.6);
+            box-shadow: 0 0 8px rgba(83, 168, 255, 0.45);
+        }
+
+        .params-list::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #71b9ff, #58fff1);
+        }
+
+        .params-list::-webkit-scrollbar-button {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
+        .param-group {
+            color: #9dc6ff;
+            font-weight: 700;
+            margin: 9px 0 4px;
+            padding-top: 7px;
+            border-top: 1px solid rgba(111, 168, 255, 0.16);
+        }
+
+        .param-group:first-child { border-top: none; padding-top: 0; }
+
+        .param-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 4px 0;
+        }
+
+        .param-key { color: var(--text-dim); }
+        .param-val { color: #f2f7ff; font-weight: 500; word-break: break-all; }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.87rem;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .data-table thead th {
+            background: rgba(44, 72, 146, 0.55);
+            color: #f0f5ff;
+            padding: 9px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--line-strong);
+        }
+
+        .data-table tbody td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(111, 168, 255, 0.14);
+            color: #d4e0ff;
+        }
+
+        .data-table tbody tr:hover { background: rgba(83, 168, 255, 0.1); }
+
+        .empty-tip {
+            color: var(--text-dim);
+            text-align: center;
+            padding: 30px 0;
+        }
+
+        @media (max-width: 1024px) {
+            .section-grid { grid-template-columns: 1fr; }
+            .module-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
+        @media (max-width: 680px) {
+            body { padding: 12px; }
+            .topnav { flex-direction: column; align-items: flex-start; }
+            .module-grid { grid-template-columns: 1fr; }
+            .kpi-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header class="topnav">
+            <a class="brand" href="/" title="返回首页">
+                <div class="logo-dot"></div>
+                <div>
+                    <h1>ETF 智能研投系统</h1>
+                    <small>量化策略 · 回测分析 · 定投模拟 · 数据查询</small>
+                </div>
+            </a>
+            <nav class="nav-links">
+                <a href="/" class="active">首页</a>
+                <a href="/backtest">策略回测</a>
+                <a href="/screening">基金筛选</a>
+                <a href="/strategy">策略参数</a>
+                <a href="/dca">定投模拟</a>
+                <a href="/data">数据查询</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <h2>基于估值与风控的 ETF 智能研投平台</h2>
+            <p>首页聚合系统关键指标、净值曲线、参数快照和交易日志；其余核心能力在下方模块入口中可直接访问。</p>
+            <div class="kpi-grid" id="kpiGrid"></div>
+        </section>
+
+        <section class="module-grid">
+            <a class="module-card" href="/backtest"><b>策略回测</b><span>收益、回撤、夏普、交易记录</span></a>
+            <a class="module-card" href="/screening"><b>基金筛选</b><span>估值、费率、规模、跟踪误差</span></a>
+            <a class="module-card" href="/strategy"><b>策略参数</b><span>阈值管理、信号预览、在线更新</span></a>
+            <a class="module-card" href="/dca"><b>定投模拟</b><span>固定金额/份额、周期、收益分析</span></a>
+            <a class="module-card" href="/data"><b>数据查询</b><span>ETF 行情曲线与历史明细</span></a>
+        </section>
+
+        <section class="section-grid">
+            <div class="glass">
+                <div class="section-title">
+                    <h3>组合净值曲线</h3>
+                    <span id="updateTime">加载中...</span>
+                </div>
+                <div id="mainChart" style="height: 330px;"></div>
+            </div>
+            <div class="glass">
+                <div class="section-title">
+                    <h3>策略参数快照</h3>
+                    <span>中文映射</span>
+                </div>
+                <div id="paramsPanel" class="params-list"></div>
+            </div>
+        </section>
+
+        <section class="glass" style="margin-bottom: 16px;">
+            <div class="section-title">
+                <h3>风控状态</h3>
+                <span style="color:var(--text-dim);font-size:0.8rem;">基于最近回测数据实时评估</span>
+            </div>
+            <div id="riskStatus" class="kpi-grid"></div>
+        </section>
+
+        <section class="glass" style="margin-bottom: 16px;">
+            <div class="section-title">
+                <h3>数据服务状态</h3>
+                <span id="systemUpdateTime">加载中...</span>
+            </div>
+            <div id="systemStatus" class="kpi-grid"></div>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="refreshSystem" class="module-card" style="padding:8px 12px;cursor:pointer;">刷新数据</button>
+                <span id="refreshMsg" class="empty-tip" style="padding:0;text-align:left;"></span>
+            </div>
+        </section>
+
+        <section class="glass">
+            <div class="section-title">
+                <h3>最近交易日志</h3>
+                <span>按时间倒序</span>
+            </div>
+            <div id="tradesTable"></div>
+        </section>
+    </div>
+
+    <script>
+    (function () {
+        function toMoney(v) { return Number(v || 0).toFixed(2); }
+        function toPct(v) { return (Number(v || 0) * 100).toFixed(2) + '%'; }
+
+        var tradeTypeMap = {
+            'buy': '买入',
+            'sell': '卖出',
+            'add': '加仓',
+            'take_profit': '止盈',
+            'stop_loss': '止损',
+            'rebalance': '调仓'
+        };
+        function cnType(t) { return tradeTypeMap[t] || t; }
+        function cnReason(r) {
+            var s = String(r || '');
+            if (!s) return '-';
+            if (s.indexOf('portfolio drawdown') >= 0) return '组合回撤触发风控减仓';
+            if (s.indexOf('value/drop trigger hit') >= 0) return '估值/跌幅触发买入或加仓';
+            if (s.indexOf('daily drop trigger hit') >= 0) return '单日下跌触发买入或加仓';
+            if (s.indexOf('Weight deviation') >= 0) return '仓位偏离触发调仓';
+            if (s.indexOf('Return ') >= 0) return '收益率触发止盈';
+            if (s.indexOf('Loss ') >= 0) return '亏损触发止损';
+            return s;
+        }
+
+        var keyMap = {
+            semi_monthly_rebalance: '半月再平衡',
+            buy_signal: '买入信号',
+            broad_market: '宽基指数',
+            gold: '黄金指数',
+            sector: '行业成长',
+            daily_drop_trigger: '单日跌幅阈值',
+            pe_percentile_threshold: 'PE分位阈值',
+            deviation_portfolio: '组合偏离阈值',
+            deviation_single: '单标偏离阈值',
+            rebalance_day: '再平衡日期',
+            stop_loss: '止损策略',
+            take_profit: '止盈策略',
+            pause_add_threshold: '暂停加仓阈值',
+            single_max_drawdown: '单标最大回撤',
+            portfolio_drawdown: '组合回撤控制',
+            tier1: '一档风控',
+            tier2: '二档风控',
+            valuation_exit: '估值退出',
+            reduce_ratio: '减仓比例',
+            return_threshold: '收益阈值',
+            force_reduce: '强制降仓',
+            force_reduce_ratio: '强制降仓比例',
+            force_reduce_threshold: '强制触发阈值',
+            ma_period: '均线周期',
+            confirm_days: '确认天数',
+            ma_break: '跌破均线',
+            daily_drop: '单日跌幅',
+            return_exit: '收益退出'
+        };
+
+        function cnKey(k) { return keyMap[k] || k; }
+
+        function renderKpis(metrics) {
+            var rows = [
+                { label: '期末资产', value: toMoney(metrics.final_value), cls: metrics.total_return >= 0 ? 'pos' : 'neg' },
+                { label: '累计收益率', value: toPct(metrics.total_return), cls: metrics.total_return >= 0 ? 'pos' : 'neg' },
+                { label: '夏普比率', value: Number(metrics.sharpe_ratio || 0).toFixed(2), cls: '' },
+                { label: '最大回撤', value: toPct(metrics.max_drawdown), cls: 'neg' }
+            ];
+            document.getElementById('kpiGrid').innerHTML = rows.map(function (r) {
+                return '<div class="kpi"><div class="label">' + r.label + '</div><div class="value ' + r.cls + '">' + r.value + '</div></div>';
+            }).join('');
+            
+            renderRiskStatus(metrics);
+        }
+        
+        function renderRiskStatus(m) {
+            var risks = [
+                { label: '当前回撤', value: toPct(m.max_drawdown), status: m.max_drawdown > 0.2 ? 'danger' : 'success' },
+                { label: '波动率', value: toPct(m.volatility), status: m.volatility > 0.3 ? 'warning' : 'normal' },
+                { label: '夏普比率', value: Number(m.sharpe_ratio).toFixed(2), status: m.sharpe_ratio < 0 ? 'danger' : 'success' },
+                { label: '胜率', value: toPct(m.win_rate), status: m.win_rate < 0.4 ? 'warning' : 'normal' }
+            ];
+            
+            var html = '';
+            risks.forEach(function(r){
+                var color = r.status === 'danger' ? '#ff6585' : (r.status === 'success' ? '#60f2a9' : (r.status === 'warning' ? '#ffb74d' : '#e8f0ff'));
+                html += '<div class="kpi"><div class="label">'+r.label+'</div><div class="value" style="color:'+color+'">'+r.value+'</div></div>';
+            });
+            document.getElementById('riskStatus').innerHTML = html;
+        }
+
+        function renderSystemStatus(data) {
+            var source = data.data_source || {};
+            var weekly = data.weekly_full_check || {};
+            var cache = data.cache || {};
+            var rows = [
+                { label: '主数据源', value: source.primary || '未知' },
+                { label: '备用源数量', value: String(source.fallback_count || 0) },
+                { label: '周度全量校验', value: weekly.enabled ? '已开启' : '未开启' },
+                { label: '校验日', value: weekly.full_check_day || '-' },
+                { label: '最近校验', value: weekly.last_check || '-' },
+                { label: '缓存状态', value: cache.status || '-' },
+            ];
+            document.getElementById('systemStatus').innerHTML = rows.map(function (r) {
+                return '<div class="kpi"><div class="label">' + r.label + '</div><div class="value">' + r.value + '</div></div>';
+            }).join('');
+            document.getElementById('systemUpdateTime').textContent = '更新时间：' + new Date().toLocaleString('zh-CN');
+        }
+
+        function renderParams(params) {
+            var html = '';
+            function walk(obj) {
+                Object.keys(obj || {}).forEach(function (k) {
+                    var v = obj[k];
+                    if (v && typeof v === 'object' && !Array.isArray(v)) {
+                        html += '<div class="param-group">' + cnKey(k) + '</div>';
+                        walk(v);
+                    } else {
+                        html += '<div class="param-item"><span class="param-key">' + cnKey(k) + '</span><span class="param-val">' + JSON.stringify(v) + '</span></div>';
+                    }
+                });
+            }
+            walk(params);
+            document.getElementById('paramsPanel').innerHTML = html || '<p class="empty-tip">暂无参数数据</p>';
+        }
+
+        function renderTrades(trades) {
+            if (!trades || trades.length === 0) {
+                document.getElementById('tradesTable').innerHTML = '<p class="empty-tip">暂无交易记录</p>';
+                return;
+            }
+            var html = '<table class="data-table"><thead><tr><th>日期</th><th>代码</th><th>类型</th><th>单位净值</th><th>金额/份额</th><th>原因</th></tr></thead><tbody>';
+            trades.slice().reverse().forEach(function (t) {
+                var amount = t.amount ? toMoney(t.amount) : (t.shares ? Number(t.shares).toFixed(2) + '份' : '-');
+                html += '<tr><td>' + (t.date || '-') + '</td><td>' + (t.code || '-') + '</td><td>' + cnType(t.type) + '</td><td>' + (t.nav || '-') + '</td><td>' + amount + '</td><td>' + cnReason(t.reason) + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('tradesTable').innerHTML = html;
+        }
+
+        var chart = echarts.init(document.getElementById('mainChart'));
+
+        function renderCurve(curve) {
+            if (!curve || curve.length === 0) {
+                document.getElementById('mainChart').innerHTML = '<p class="empty-tip">暂无净值曲线数据</p>';
+                return;
+            }
+            var x = curve.map(function (d) { return d.date; });
+            var y = curve.map(function (d) { return d.total_value; });
+            chart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: 50, right: 14, top: 18, bottom: 42 },
+                xAxis: { type: 'category', data: x, axisLabel: { color: '#95a8d8', rotate: 26 } },
+                yAxis: { type: 'value', axisLabel: { color: '#95a8d8' }, splitLine: { lineStyle: { color: 'rgba(120,168,255,0.16)' } } },
+                dataZoom: [
+                    { type: 'inside' },
+                    {
+                        type: 'slider',
+                        height: 16,
+                        bottom: 8,
+                        borderColor: 'rgba(83,168,255,0.25)',
+                        backgroundColor: 'rgba(14,23,51,0.85)',
+                        fillerColor: 'rgba(83,168,255,0.22)',
+                        handleIcon: 'M8.7,11.8v-7.6h1.6v7.6z M13.7,11.8v-7.6h1.6v7.6z',
+                        handleSize: '110%',
+                        handleStyle: {
+                            color: '#53a8ff',
+                            borderColor: '#2bf2e2',
+                            shadowBlur: 8,
+                            shadowColor: 'rgba(83,168,255,0.6)'
+                        },
+                        moveHandleStyle: {
+                            color: 'rgba(83,168,255,0.55)'
+                        },
+                        textStyle: {
+                            color: '#9db4e8'
+                        }
+                    }
+                ],
+                series: [{
+                    type: 'line',
+                    smooth: true,
+                    showSymbol: false,
+                    lineStyle: { color: '#53a8ff', width: 2 },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(83,168,255,0.28)' },
+                            { offset: 1, color: 'rgba(83,168,255,0)' }
+                        ])
+                    },
+                    data: y
+                }]
+            });
+        }
+
+        fetch('/api/backtest/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initial_capital: 100000, start_date: '2024-01-01', end_date: '2024-12-31' })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+            if (resp.status_code !== 0) { return; }
+            renderKpis(resp.data.metrics || {});
+            renderCurve(resp.data.equity_curve || []);
+            renderTrades(resp.data.trade_log || []);
+            document.getElementById('updateTime').textContent = '更新时间：' + new Date().toLocaleString('zh-CN');
+        });
+
+        fetch('/api/strategy/params')
+            .then(function (r) { return r.json(); })
+            .then(function (resp) {
+                if (resp.status_code !== 0) { return; }
+                renderParams(resp.data || {});
+            });
+
+        function loadSystemStatus() {
+            fetch('/api/system/status')
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    if (resp.status_code !== 0) return;
+                    renderSystemStatus(resp.data || {});
+                });
+        }
+
+        document.getElementById('refreshSystem').addEventListener('click', function () {
+            var btn = document.getElementById('refreshSystem');
+            var msg = document.getElementById('refreshMsg');
+            btn.textContent = '刷新中...';
+            fetch('/api/system/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scope: 'all' })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    btn.textContent = '刷新数据';
+                    if (resp.status_code !== 0) {
+                        msg.textContent = '刷新失败，请稍后重试。';
+                        return;
+                    }
+                    msg.textContent = '刷新任务已提交：' + (resp.data.refreshed_at || '刚刚');
+                    loadSystemStatus();
+                })
+                .catch(function () {
+                    btn.textContent = '刷新数据';
+                    msg.textContent = '网络异常，刷新失败。';
+                });
+        });
+
+        loadSystemStatus();
+
+        window.addEventListener('resize', function () { chart.resize(); });
+    })();
+    </script>
+</body>
+</html>
